@@ -2,9 +2,10 @@ import json
 import os
 import sys
 import requests
-
+from PyPDF2 import PdfReader
+import docx2txt
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 
 console = Console()
 
@@ -12,11 +13,6 @@ console = Console()
 # --- File Reading Functions ---
 
 def extract_text_from_pdf(file_path):
-    try:
-        from PyPDF2 import PdfReader
-    except ImportError:
-        console.print("[red]Error:[/red] PyPDF2 is required to read PDF files. Install it via 'pip install PyPDF2'.")
-        sys.exit(1)
     text = ""
     with open(file_path, "rb") as f:
         reader = PdfReader(f)
@@ -27,11 +23,6 @@ def extract_text_from_pdf(file_path):
     return text
 
 def extract_text_from_docx(file_path):
-    try:
-        import docx2txt
-    except ImportError:
-        console.print("[red]Error:[/red] docx2txt is required to read DOCX files. Install it via 'pip install docx2txt'.")
-        sys.exit(1)
     return docx2txt.process(file_path)
 
 def read_input_file(file_path):
@@ -108,20 +99,65 @@ def call_ollama(prompt, model, base_url):
         raise Exception("Unexpected API response format.")
 
 
+def call_openai(prompt, model, endpoint, api_key):
+    """
+    Call OpenAI completion endpoint with the given prompt.
+    """
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": model,
+        "prompt": prompt,
+        "max_tokens": 2048,
+        "temperature": 0.7
+    }
+    response = requests.post(
+        f"{endpoint}/v1/completions",
+        headers=headers,
+        json=data
+    )
+    if response.status_code != 200:
+        raise Exception(f"OpenAI API error {response.status_code}: {response.text}")
+    result = response.json()
+    if "choices" in result and result["choices"]:
+        return result["choices"][0].get("text", "")
+    raise Exception("Unexpected OpenAI API response format.")
+
+
+def call_llm(prompt, model, endpoint, api_key=None):
+    """
+    Unified call: use OpenAI if API key present, else fallback to Ollama.
+    """
+    key = api_key or os.getenv("OPENAI_API_KEY")
+    if key:
+        return call_openai(prompt, model, endpoint, key)
+    # assume Ollama: append /generate if not already present
+    url = endpoint if endpoint.rstrip('/').endswith('/generate') else f"{endpoint.rstrip('/')}/generate"
+    return call_ollama(prompt, model, url)
+
+
 # --- Main Processing Pipeline ---
 
 def process_text_to_markdown(input_file, output_file, model, chunk_size, tail_size,
-                             prompt_template, api_url):
+                             prompt_template, endpoint, api_key=None):
     text = read_input_file(input_file)
     prompts = create_prompts(text, chunk_size, tail_size, prompt_template)
     markdown_segments = []
 
     console.print(f"[green]Processing {len(prompts)} chunk(s) using model [bold]{model}[/bold]...[/green]")
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
+    with Progress(
+        SpinnerColumn(),
+        BarColumn(bar_width=None),
+        TextColumn("{task.completed}/{task.total} Chunks"),
+        TimeRemainingColumn(),
+        transient=True
+    ) as progress:
         task = progress.add_task("Processing chunks...", total=len(prompts))
         for idx, prompt in enumerate(prompts, 1):
             try:
-                md_output = call_ollama(prompt, model, api_url)
+                md_output = call_llm(prompt, model, endpoint, api_key)
                 markdown_segments.append(md_output)
             except Exception as e:
                 error_msg = f"<!-- Error processing chunk {idx}: {e} -->"
@@ -170,8 +206,8 @@ def get_default_config() -> dict:
     Retrieve a default configuration dict.
     """
     return {
-        "model": "llama3.2",
-        "chunk_size": 1000,
+        "model": "gemma3:4b",
+        "chunk_size": 4000,
         "tail_size": 200,
         "prompt_template": (
             "The following text is extracted from a document and may contain artifacts such as broken lines, headers, and footers.\n\n"
@@ -179,9 +215,10 @@ def get_default_config() -> dict:
             "Only the section labeled 'CURRENT SEGMENT' must be converted to clean Markdown, preserving structure such as headings, lists, and paragraphs.\n\n"
             "CONTEXT:\n{context}\n\nCURRENT SEGMENT:\n{current}\n\nMarkdown Output:"
         ),
-        "api_url": "http://localhost:11434/api/generate"
+        "endpoint": "http://localhost:11434/api",
+        "api_key": None
     }
-\
+
 def get_config(config_path: str) -> dict:
     """
     Load the configuration file if it exists, otherwise return default values.

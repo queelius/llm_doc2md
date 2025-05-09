@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-import utils
+import llm_doc2md.utils as utils
 
 import os
 from rich.console import Console
@@ -24,8 +24,9 @@ def main():
     convert_parser.add_argument("--tail-size", type=int, default=200, help="Tail size from previous chunk for context")
     convert_parser.add_argument("--prompt-template", type=str, default=None,
                         help="Prompt template with placeholders {context} and {current}")
-    convert_parser.add_argument("--api-url", default="http://localhost:11434/api/generate", help="Ollama API URL")
-    convert_parser.add_argument("--config", type=str, help="Path to JSON config file to override options")
+    convert_parser.add_argument("--endpoint", default="http://localhost:11434/api", help="LLM endpoint base URL (Ollama API base or OpenAI compatible)")
+    convert_parser.add_argument("--api-key", default=None, help="API key for OpenAI-compatible endpoints (or set OPENAI_API_KEY env)")
+    convert_parser.add_argument("--config", type=str, default=None, help="Path to JSON config file to override options")
 
     # Subcommand to generate default config file
     config_parser = subparsers.add_parser("init-config", help="Generate a default configuration file")
@@ -61,7 +62,8 @@ def main():
         args.tail_size = config.get("tail_size", args.tail_size)
         if not args.prompt_template:
             args.prompt_template = config.get("prompt_template", "")
-        args.api_url = config.get("api_url", args.api_url)
+        args.endpoint = config.get("endpoint", config.get("api_url", args.endpoint))  # support old api_url key for migrations
+        args.api_key  = config.get("api_key", args.api_key)
 
     utils.process_text_to_markdown(
         input_file=args.input,
@@ -70,7 +72,8 @@ def main():
         chunk_size=args.chunk_size,
         tail_size=args.tail_size,
         prompt_template=args.prompt_template,
-        api_url=args.api_url
+        endpoint=args.endpoint,
+        api_key=args.api_key
     )
 
 if __name__ == '__main__':

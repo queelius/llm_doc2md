@@ -2,13 +2,14 @@ from setuptools import setup, find_packages
 
 setup(
     name="llm-doc2md",
-    version="0.1.0",
+    version="0.4.0",
     author="Alex Towell",
     author_email="lex@metafunctor.com",
-    description="Convert PDF, DOCX, TXT, or Markdown files to clean Markdown using an LLM via Ollama.",
+    description="Convert PDF, DOCX, TXT, or Markdown files to clean Markdown using an OpenAI-compatible endpoint, such as Ollama.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/queelius/llm-doc2md",
+    license="MIT",
     packages=find_packages(),
     install_requires=[
         "requests",
@@ -23,6 +24,7 @@ setup(
     },
     classifiers=[
         "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.8",
