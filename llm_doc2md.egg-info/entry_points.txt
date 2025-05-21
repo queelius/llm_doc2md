@@ -1,2 +1,0 @@
-[console_scripts]
-llm-doc2md = llm_doc2md.cli:main

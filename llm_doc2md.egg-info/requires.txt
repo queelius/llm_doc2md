@@ -1,4 +1,0 @@
-requests
-rich
-PyPDF2
-docx2txt
